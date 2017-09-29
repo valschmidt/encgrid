@@ -1,0 +1,3 @@
+/Users/vschmidt/gitsrc/encgrid/encgrid/encgrid/CMakeFiles/edit_cache.dir
+/Users/vschmidt/gitsrc/encgrid/encgrid/encgrid/CMakeFiles/rebuild_cache.dir
+/Users/vschmidt/gitsrc/encgrid/encgrid/encgrid/CMakeFiles/encgrid.dir
