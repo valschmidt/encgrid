@@ -48,8 +48,9 @@ int main(int argc, char **argv){
     fs::path ENCfilename = "";
     int buffer_dist = 0;
     int grid_size = 5;
+    bool simpleGrid = false;
 
-    while ((opt = getopt(argc,argv,"f:b:r:")) != EOF)
+    while ((opt = getopt(argc,argv,"f:b:r:h")) != EOF)
     {
            switch(opt)
            {
@@ -57,6 +58,10 @@ int main(int argc, char **argv){
             {
                f = 1;
                ENCfilename = fs::path(optarg);
+               if(!fs::exists(ENCfilename.string())){
+                   cout << "Cannot find file: " << ENCfilename.string() <<endl;
+                   return 1;
+               }
                cout <<"ENCFilename: "<< ENCfilename.string() <<endl;
                break;
            }
@@ -78,7 +83,8 @@ int main(int argc, char **argv){
            {
                fprintf(stderr,"   USAGE: encgrid -f ENC_FILENAME -b buffer -r resolution\n");
            }
-               default: cout<<endl; abort();
+               default: cout<<endl;
+               return 0;
            }
      }
 
@@ -114,13 +120,20 @@ int main(int argc, char **argv){
            std::cout << "Success" << "\n";
     }
 
+    // simpleGrid == False: Grids on land, soundings, contours, rocks, masked by rocks, wrecks
+    // and obstructions, floating docks, pontoons, depth areas, land and outline.
+    // simpleGrid == True: Grids only on land, soundings, contours, masked by depth areas, land and outline.
+    // simpleGrid provides a grid based only on soundings for ENC_contact (reactive boat driving) as
+    // these other components are handled separately. (the simple grid is used to create an adhoc set of contours
+    // for reactive ship driving to prevent going aground.
     Grid_Interp grid = Grid_Interp(outputGriddir.string() + '/',
                                    ENCfilename.string(),
                                    grid_size,
                                    buffer_dist,
                                    MHW,
                                    LatOrigin,
-                                   LongOrigin);
+                                   LongOrigin,
+                                   simpleGrid);
 
     // I don't think csv or .mat options are available.
     grid.Run(false,true);//(true, true); // Boleans are t/f build a .csv or .mat files for each raster
