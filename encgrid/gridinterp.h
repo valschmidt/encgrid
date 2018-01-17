@@ -38,8 +38,8 @@ class Grid_Interp
 {
 public:
     Grid_Interp();
-    Grid_Interp(string MOOS_path, string ENC_Filename, double Grid_size, double buffer_dist, double MHW_offset, Geodesy Geod);
-    Grid_Interp(string MOOS_path, string ENC_Filename, double Grid_size, double buffer_dist, double MHW_offset, double lat, double lon);
+    Grid_Interp(string MOOS_path, string ENC_Filename, double Grid_size, double buffer_dist, double MHW_offset, Geodesy Geod, bool simpleGrid);
+    Grid_Interp(string MOOS_path, string ENC_Filename, double Grid_size, double buffer_dist, double MHW_offset, double lat, double lon, bool simpleGrid);
     ~Grid_Interp() {}
 
     // Initialize Geodesy
@@ -111,6 +111,7 @@ private:
     GDALDataset *ds_poly, *ds_pnt, *ds_depth, *ds_outline;
     OGRLayer  *layer_poly, *layer_pnt, *layer_depth, *layer_outline;
     OGRFeatureDefn *feat_def_poly, *feat_def_pnt, *feat_def_depth, *feat_def_outline;
+    bool simpleGrid;
 };
 
 #endif // GRIDINTERP_H
