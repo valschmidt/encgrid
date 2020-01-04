@@ -18,7 +18,6 @@ set(CMAKE_CXX_TARGET_INCLUDE_PATH
   "lib_mbutil"
   "/usr/local/include"
   "/Library/Frameworks/GDAL.framework/Headers"
-  "encgrid/libMOOSGeodesy/include/MOOS/libMOOSGeodesy/MOOSGeodesy.h"
   "encgrid/."
   )
 

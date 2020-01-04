@@ -92,7 +92,10 @@ void Grid_Interp::buildLayers()
         exit( 1 );
     }
     // Create the layers
-    layer_pnt = ds_pnt->CreateLayer( "point", NULL, wkbPoint25D, NULL );
+    // VES Changed to polygon later to handle buffering points.
+    //layer_pnt = ds_pnt->CreateLayer( "point", NULL, wkbPoint25D, NULL );
+    layer_pnt = ds_pnt->CreateLayer( "point", NULL, wkbPolygon25D, NULL );
+
     if( layer_pnt == NULL )
     {
         printf( "Layer creation failed.\n" );
@@ -170,9 +173,11 @@ void Grid_Interp::Run(bool csv, bool mat)
     // buildLayers is a prepatory step that creates shape files as temporary holders
     // for data of specific kinds for later processing.
     buildLayers();
+    cout << "Before\n";
 
     ds = (GDALDataset*) GDALOpenEx( ENC_filename.c_str(), GDAL_OF_VECTOR, NULL, NULL, NULL );
-
+    cout << "after";
+    
     getENC_MinMax(ds);
 
     vector<int> poly_rasterdata, depth_area_rasterdata, ENC_outline_rasterdata, point_rasterdata;
@@ -233,39 +238,20 @@ void Grid_Interp::Run(bool csv, bool mat)
     options.dfRadius = 0;
     options.dfNoDataValue = -1000;
 
-    // An attempt to capture the chart scale. NOT WORKING.
+    // An attempt to capture the chart scale.
     OGRLayer* DID_layer = ds->GetLayerByName("DSID");
-    OGRFeature* CSCL_feature;
-    OGRFeatureDefn* featDFN;
     int chartScale;
+    chartScale = ds->GetLayerByName("DSID")->GetFeature(0)->GetFieldAsInteger("DSPM_CSCL");
+    cout << "Chart Scale: " << chartScale << endl;
 
-    if (DID_layer == NULL) { cout<<"error"<<endl;}
-    cout << "got here" << endl;
-    DID_layer->ResetReading();
-    for(int i=0; i < DID_layer->GetFeatureCount(); i++) {
-    //while( (CSCL_feature = DID_layer->GetNextFeature()) != NULL){
-        CSCL_feature = DID_layer->GetFeature(i);
-        featDFN = CSCL_feature->GetDefnRef();
-        cout << featDFN->GetName() << endl;
-        if (strcmp(featDFN->GetName(), "DSMP_CSCL")) {
-            cout << CSCL_feature->GetFieldAsString("DSMP_CSCL") << endl;
-        }
-        //chartScale = CSCL_feature->GetFieldAsString("DSMP_CSCL");
-//        //cout << chartScale << endl;
-//        if( (chartScale = CSCL_feature->GetFieldAsInteger("DSMP_CSCL")) != 1){
-//            cout << "Failed to get scale" << endl;
-//            cout << chartScale << endl;
-//        }else{
-//            cout << "Chart Scale: " << chartScale << endl;
-//        }
-
+    // If grid_size was not set explicitly (-1), then set it to 0.25 mm at chart scale.
+    // otherwise use the specified value.
+    if (grid_size == -1) {
+        grid_size = float(chartScale)/1000.0 * 0.25;
     }
-
-
 
     int x_res = int(round((maxX - minX)/grid_size));
     int y_res = int(round((maxY - minY)/grid_size));
-
 
     griddedData.resize(y_res*x_res);
     vector<float> new_rast_data(y_res*x_res,-10.0);
@@ -307,7 +293,26 @@ void Grid_Interp::Run(bool csv, bool mat)
 
     cout << "Gridded" << endl;
 
-    // Combine the 3 1D vectors to one 2D vector
+    // Here we want to write out the gridded data before updating it in a final step. At this point the grid
+    // is upside down. This loop swaps it.
+    vector<int> gridded_data_temp(y_res*x_res);
+    int rasterIndex=0;
+    for (int i =0; i<griddedData.size(); i++)
+    {
+        rasterIndex2gridIndex(i,rasterIndex, x_res, y_res);
+        //row_major2grid(i, x, y, x_res);
+        gridded_data_temp[rasterIndex] = griddedData[i];
+    }
+
+    // Write out the raw gridded data before applying masks (in updateMap below) to fix depth area anomalies.
+    fs::path ENC_filename_path = fs::path(ENC_filename);
+    string file_basename = ENC_filename_path.stem().string() + "_raw.tiff";
+    ENC_filename_path = fs::path(file_basename);
+    fs::path tiffPath = fs::path(MOOS_Path);
+    tiffPath /= ENC_filename_path.filename();
+    writeRasterData(tiffPath.string(), x_res, y_res, gridded_data_temp);
+
+    // Update map by masking against depth areas to fix depth area anomalies.
     // This step masks the gridded data, taking the more conservative of the individual polygons
     // points, depth areas and enc outline data. This ensures that the final grid does not loose
     // fidelity of navigational hazards in the buffering of adjacent ones.
@@ -318,9 +323,9 @@ void Grid_Interp::Run(bool csv, bool mat)
 
     // MODIFIED: VES 9/29/2017
     // Output tiff filename is now based on the name of the ENC, with .000 replaced with .tiff
-    fs::path ENC_filename_path = fs::path(ENC_filename);
+    ENC_filename_path = fs::path(ENC_filename);
     ENC_filename_path.replace_extension(".tiff");
-    fs::path tiffPath = fs::path(MOOS_Path);
+    tiffPath = fs::path(MOOS_Path);
     tiffPath /= ENC_filename_path.filename();
 
     writeRasterData(tiffPath.string(), x_res, y_res, new_rast_data);
@@ -386,7 +391,7 @@ void Grid_Interp::updateMap(vector<int> &poly_data, vector<int> &depth_data, vec
                         {
                             Map[y][x] = point_data[rasterIndex];
                         }
-                     }
+                    }
                 }
             }
             else
@@ -681,7 +686,7 @@ void Grid_Interp::lineFeat(OGRFeature* feat, OGRGeometry* geom, string layerName
         }
         return; // do not store the line as a polygon
     }
-    else if ((layerName =="PONTON")||(layerName =="FLODOC")||(layerName =="DYKCON"))
+    else if ((layerName =="PONTON")||(layerName =="FLODOC")||(layerName =="DYKCON")||(layerName == "LNDARE"))
     {
         z = landZ;
     }
@@ -763,9 +768,24 @@ void Grid_Interp::pointFeat(OGRFeature* feat, OGRGeometry* geom, string layerNam
     double lat,lon, x,y, z;
     OGRFeature *new_feat;
 
+
+
+
     poPoint = poPoint = ( OGRPoint * )geom;
     lon = poPoint->getX();
     lat = poPoint->getY();
+
+    // VES
+    // VES BUFFERING POINT FEATURES
+    OGRGeometry *geom_UTM, *buff_geom;
+    OGRLineString *UTM_line;
+    OGRPolygon *Buff_line;
+    geom_UTM = geod.LatLong2UTM(geom);
+    UTM_line = ( OGRLineString * )geom_UTM;
+    // Buffer at 8X the grid size, which should be 2mm at chart scale when gridded at 0.25 mm.
+    buff_geom = UTM_line->Buffer(grid_size * 8.0);
+    Buff_line = (OGRPolygon *) buff_geom;
+    Buff_line->segmentize(grid_size);
 
     bool WL_flag = false;
     string Z;
@@ -788,12 +808,18 @@ void Grid_Interp::pointFeat(OGRFeature* feat, OGRGeometry* geom, string layerNam
         else
             z = feat->GetFieldAsDouble("VALSOU")*100;
 
+        // VES Commented this out...
         // Put into point layer
-        geod.LatLong2UTM(lat, lon, x,y);
-        pt = OGRPoint(x,y);
+        //geod.LatLong2UTM(lat, lon, x,y);
+        //pt = OGRPoint(x,y);
+        //new_feat =  OGRFeature::CreateFeature(feat_def_pnt);
+        //new_feat->SetField("Depth", z);
+        //new_feat->SetGeometry(&pt);
+
+        // VES Added this to insert buffered point as polygon.
         new_feat =  OGRFeature::CreateFeature(feat_def_pnt);
         new_feat->SetField("Depth", z);
-        new_feat->SetGeometry(&pt);
+        new_feat->SetGeometry(Buff_line);
 
         // Build the new feature
         if( layer_pnt->CreateFeature( new_feat ) != OGRERR_NONE )
@@ -861,7 +887,7 @@ void Grid_Interp::polygonFeat(OGRFeature* feat, OGRGeometry* geom, string layerN
 
     buff_geom = geom_UTM->Buffer(buffer_size);
 
-    //UTM_poly = ( OGRPolygon * )buff_geom;
+    UTM_poly = ( OGRPolygon * )buff_geom;
     UTM_poly->segmentize(grid_size);
 
     if (layerName == "LNDARE")
@@ -1038,6 +1064,50 @@ void Grid_Interp::writeRasterData(string filename, int nXSize, int nYSize, vecto
 
     poBand->RasterIO( GF_Write, 0, 0, nXSize, nYSize,
                       RasterData.data(), nXSize, nYSize, GDT_Float32, 0, 0 );
+
+    // Once we're done, close properly the dataset
+    GDALClose( (GDALDatasetH) poDataset );
+}
+
+void Grid_Interp::writeRasterData(string filename, int nXSize, int nYSize, vector<int>&RasterData)
+{
+    GDALDataset *poDataset;
+    GDALRasterBand *poBand;
+    OGRSpatialReference oSRS;
+    GDALDriver *poDriver;
+    char *pszSRS_WKT = NULL;
+    char **papszOptions = NULL;
+    const char *pszFormat = "GTiff";
+    int i,j;
+
+    // MODIFIED: Removed fixed paths. VES 9/28/2017
+    //string full_Filename = MOOS_Path+"src/ENCs/Grid/" +filename;
+    string full_Filename = filename;
+
+    // Open file for writing
+    poDriver = GetGDALDriverManager()->GetDriverByName(pszFormat);
+    poDataset = poDriver->Create( full_Filename.c_str(), nXSize, nYSize, 1, GDT_Float32, papszOptions );
+
+    // Set geo transform
+    double adfGeoTransform[6] = {minX+geod.getXOrigin(), grid_size, 0, maxY+geod.getYOrigin(), 0, -grid_size};
+    poDataset->SetGeoTransform( adfGeoTransform );
+
+    // Set Coordinate system
+    oSRS = geod.getUTM();
+    oSRS.exportToWkt( &pszSRS_WKT );
+    poDataset->SetProjection( pszSRS_WKT );
+    CPLFree( pszSRS_WKT );
+
+    // Write the file
+    poBand = poDataset->GetRasterBand(1);
+    // MODIFIED: VES 9/28/2017
+    // Divided by 100 to get back to meters before writing tiff file. SI units are good.
+    //for (i=0; i<=RasterData.size();i++){
+    //        RasterData[i] = RasterData[i] / 100.0;
+    //}
+
+    poBand->RasterIO( GF_Write, 0, 0, nXSize, nYSize,
+                      RasterData.data(), nXSize, nYSize, GDT_Int32, 0, 0 );
 
     // Once we're done, close properly the dataset
     GDALClose( (GDALDatasetH) poDataset );

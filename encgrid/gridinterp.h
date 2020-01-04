@@ -61,6 +61,7 @@ public:
     void raster2XYZ(vector<int>&RasterData, int nXSize);
     void getRasterData(string filename, int &nXSize, int &nYSize, vector<int>&RasterData);
     void writeRasterData(string filename, int nXSize, int nYSize, vector<float> &RasterData);
+    void writeRasterData(string filename, int nXSize, int nYSize, vector<int>&RasterData);
 
     void layer2XYZ(OGRLayer* layer, string layerName);
     void multipointFeat(OGRFeature* feat, OGRGeometry* geom);

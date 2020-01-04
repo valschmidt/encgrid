@@ -47,7 +47,7 @@ int main(int argc, char **argv){
     int opt,f,b,r;
     fs::path ENCfilename = "";
     int buffer_dist = 0;
-    int grid_size = 5;
+    int grid_size = -1;
     bool simpleGrid = false;
 
     while ((opt = getopt(argc,argv,"f:b:r:h")) != EOF)
@@ -134,7 +134,7 @@ int main(int argc, char **argv){
                                    LatOrigin,
                                    LongOrigin,
                                    simpleGrid);
-
+    
     // I don't think csv or .mat options are available.
     grid.Run(false,true);//(true, true); // Boleans are t/f build a .csv or .mat files for each raster
 
