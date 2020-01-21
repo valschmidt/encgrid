@@ -1,0 +1,62 @@
+TO FIX/ADD:
+
+Geotiff gets written upside down. I don't know why, but we should flip it before writing.
+Does A* require the Geotiff to be upside down? 
+
+Break out Astar into a separate command-line tool that talks start and ending location and the geotiff generated from the enc.
+
+Modify the grid and buffer size to accept floats
+
+Replace concatinated strings to create paths with boost:filesystem:path()s. 
+
+Make MHW an optional command line argument. Explain what MHW does in the help. (what does it do?)
+
+Currently I've removed the hard-coded "MOOS_path" variable which was used to write everything into a constant place on Sam's HD. I've keep the variable name because I was lazy, but I'm usign the varialbe to instead pass the directory in which encgrid was called with an added directory of the ENC name. This directory is where the results of the grid will go with all the bits that go into it. 
+
+Remove all temporary files by default but add a command line arguement to generate and leave all of them. 
+
+Revisit the creation of CSV or MATLAB files. I don't think these are necessary since MATLAB can read geotiffs directly.
+
+Check to see if the scaling (multiply by 100 to operate in cm) is successfully removed. Do the results compare properly with the chart? 
+
+Add comments to explain the buffering process and the masking processes. 
+
+See where lib_geometry is used and if it's not widely used, embed the code and remove the dependency. 
+
+Break the "Run" method into clearner chunks of reading and writing data parts for clarity and neatness. 
+
+Add checks to make sure files are there before reading. 
+
+
+DONE:
+
+Notes on how it works:
+----------------------
+buildLayers():
+This function builds shape files to hold particular categories of data that are handled differently in the code later. Shape files of type type point or polygon are created as required. [I think this could be done in a single file with multiple layers within, but maybe there is some utility to doing it this way that I don't yet see. In any event, it likely helps in troubleshooting the effect of each data source.] The file names are polygon, point, depth, and outline to hold data from 1) wrecks and land areas,[contours?] 2) "independent points [soundings?], 3)Depth area polygons and 4) outline of the chart, respectively. 
+
+The GDALDataset variables which refer to these data (and simultaneously the data on disk) are ds_poly, ds_pnt, ds_depth and ds_outline. These are private variables of the grid Class. 
+
+layer2XYZ():
+This function is a bit badly named, as I suspect the strategy has grown orgnaically. One passes a layer extracted from the ENC and the layer's name (redundant). Each  type of layer is handled differently. but in general, a particular set of attributed are searched, the depth, line or polygon information is extracted, the geometry records are usually parsed and the data is put in X, Y and depth, which are variables in the grid class. And for some data types the feature is added to the file and layer of the approriate type (created in buildLayers() above). 
+
+There is a lot going on in layer2XYZ(). This is where are the rules are applied for how the data is handled (e.g. what depth is given to land areas and obstructions, buffering applied, etc.
+
+Oddly MULTIPOINT features are not pushed into a shape file, nor are they segmented or buffered in any way. Their contents are only extracted for X, Y and depth.  
+
+LINESTRING: Features are extracted, converted to UTM, buffered and then segmented to the grid size segments. 
+
+If they are of type DEPCNT (depth contour) the handling is odd. Although they are already converted to UTM, segmented and buffered, this is ignored. The UTM converted points are segmented, withotu buffering.  The conversion to UTM In this case is odd. The X and Y origin of the geod object (GDAL's projection object) are subtracted all the X and Y UTM coordinates for the line. This is not done in other extractions. WHY?
+
+Since no buffering is done on contours, they are not polygones at this point so they are not saved to the polygon shape file. The are saved to X,Y and depth.  
+
+For obstructions, pontoons floating docks, etc, the line is extracted buffered (creating a polygon) and these are stored in the polygon.shp file WITHOUT saving to X,Y, depth. Note, however that a z value is determined in these cases and this is applied globally for the feature when saved as described in the next statement.
+
+OBSTRN, PONTON, FLODOC, DYKCON all get their z value's checked and if necessary set manually. Then this value is used in the "SetField" call when the buffered line polygon feature is created in the shape file.   
+
+POINT:
+Here type of point is checked, land and is set to landz, rocks, wrecks and obstructions are checked for depth and if they don't exist are set based on WATLEV. These are then turned into OGR points and added as features to the point shape file. But even after putting into the point shape file it seems they are also added to X,Y and depth fields. 
+
+POLYGON:
+This one extracts the chart coverage layer (M_COVR), land area (LNDARE) and wrecks and obstructions that are specified as such. The routine here is to convert these directly to polygon features in the polygon.shp file 
+n
